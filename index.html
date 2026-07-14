@@ -370,7 +370,17 @@ function buildKatana(gold) {
     new THREE.MeshBasicMaterial({ color: 0x222222 }));
   eyeL.position.set(-0.1, 0.02, -0.26);
   const eyeR = eyeL.clone(); eyeR.position.x = 0.1;
-  P.head.add(headM, band, eyeL, eyeR);
+  // モヒカン
+  const mohawk = new THREE.Group();
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.55 });
+  const spikeH = [0.09, 0.15, 0.19, 0.15, 0.09];
+  for (let i = 0; i < spikeH.length; i++) {
+    const h = spikeH[i];
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, h, 5), hairMat);
+    spike.position.set(0, 0.27 + h / 2, -0.18 + i * 0.09);
+    mohawk.add(spike);
+  }
+  P.head.add(headM, band, eyeL, eyeR, mohawk);
   P.head.position.y = 1.94;
 
   // うで（かた支点）
@@ -401,9 +411,11 @@ function buildKatana(gold) {
   // かたな
   P.katanaR = buildKatana(false);
   P.katanaR.position.y = -0.74;
+  P.katanaR.rotation.x = Math.PI / 2;   // うでに対して90度にかまえる
   P.armR.add(P.katanaR);
   P.katanaL = buildKatana(true);
   P.katanaL.position.y = -0.74;
+  P.katanaL.rotation.x = Math.PI / 2;
   P.katanaL.visible = false;
   P.armL.add(P.katanaL);
 
@@ -952,6 +964,7 @@ const CAMS = [
   { name: 'まえ',   pos: new THREE.Vector3(4.4, 3.1, -6.4), look: new THREE.Vector3(0, 1.7, 1.6) },
   { name: 'よこ',   pos: new THREE.Vector3(9.4, 3.4, -1.6), look: new THREE.Vector3(0, 1.6, -2.2) },
 ];
+const CAM_INTRO = { pos: new THREE.Vector3(0, 1.85, -3.1), look: new THREE.Vector3(0, 1.8, 0.4) };
 let camIdx = 0;
 const camPos = CAMS[0].pos.clone(), camLook = CAMS[0].look.clone();
 $('cambtn').addEventListener('click', () => {
@@ -965,10 +978,11 @@ $('mutebtn').addEventListener('click', () => {
   $('mutebtn').textContent = muted ? 'おと 🔇' : 'おと 🔊';
 });
 function updateCamera(dt) {
-  const t = CAMS[camIdx];
-  const k = Math.min(1, dt * 4);
-  const tp = t.pos.clone(); tp.x += ply.x * 0.45;
-  const tl = t.look.clone(); tl.x += ply.x * 0.8;
+  const useIntro = game.state === 'countdown' && game.introFace;
+  const t = useIntro ? CAM_INTRO : CAMS[camIdx];
+  const k = Math.min(1, dt * (useIntro ? 6 : 4));
+  const tp = t.pos.clone(); if (!useIntro) tp.x += ply.x * 0.45;
+  const tl = t.look.clone(); if (!useIntro) tl.x += ply.x * 0.8;
   camPos.lerp(tp, k);
   camLook.lerp(tl, k);
   let sx = 0, sy = 0;
@@ -1056,9 +1070,9 @@ function slashHitCheck() {
     if (p.z < -4.6 || p.z > 2.0) continue;
     let inRange = false;
     if (s.type === 'h') {
-      inRange = Math.abs(p.x - px) < (3.4 * wide + o.radius) && Math.abs(p.y - (py + 1.55)) < (1.85 + o.radius);
+      inRange = Math.abs(p.x - px) < (1.75 * wide + o.radius * 0.8) && Math.abs(p.y - (py + 1.55)) < (1.15 + o.radius * 0.8);
     } else {
-      inRange = Math.abs(p.x - px) < (1.9 * wide + o.radius) && p.y > py - 0.2 && p.y < py + 3.8 + o.radius;
+      inRange = Math.abs(p.x - px) < (1.05 * wide + o.radius * 0.8) && p.y > py + 0.35 && p.y < py + 3.2 + o.radius * 0.8;
     }
     if (!inRange) continue;
     o.hit = true;
@@ -1132,15 +1146,15 @@ function applyItem(sub) {
 function contactCheck(dt) {
   if (game.hurtCd > 0) game.hurtCd -= dt;
   const px = ply.x, py = ply.y;
-  const topY = py + (ply.crouch > 0 ? 1.15 : 2.1);
-  const botY = py + 0.25;
+  const topY = py + (ply.crouch > 0 ? 1.05 : 1.95);
+  const botY = py + 0.35;
   for (let i = objects.length - 1; i >= 0; i--) {
     const o = objects[i];
     if (o.type !== 'hard') continue;
     const p = o.group.position;
-    if (Math.abs(p.z) > 0.95) continue;
-    const rr = o.radius * 0.55;    // 当たりはゆるめ（見た目よりちいさい）
-    if (Math.abs(p.x - px) > 0.75 + rr) continue;
+    if (Math.abs(p.z) > 0.7) continue;
+    const rr = o.radius * 0.4;    // 当たり判定はきびしめ（見た目よりちいさい）
+    if (Math.abs(p.x - px) > 0.5 + rr) continue;
     if (p.y + rr < botY || p.y - rr > topY) continue;
     // ヒット！
     if (game.fx.inv > 0) {
@@ -1213,11 +1227,11 @@ function updatePlayer(dt, realDt) {
     const e = easeOut(t);
     const applyArm = (arm) => {
       if (s.type === 'h') {
-        arm.rotation.x = -1.5;
+        arm.rotation.x = 1.5;
         arm.rotation.y = s.dir * (-1.35 + 2.7 * e);
         arm.rotation.z = 0;
       } else {
-        arm.rotation.x = -2.95 + 2.45 * e;
+        arm.rotation.x = 2.95 - 2.45 * e;
         arm.rotation.y = 0;
         arm.rotation.z = 0;
       }
@@ -1246,9 +1260,9 @@ function updatePlayer(dt, realDt) {
     }
   } else {
     // 通常：かたなをかまえつつ、うでを軽くふる
-    P.armR.rotation.set(-0.85 + jog * 0.12, -0.25, -0.15);
+    P.armR.rotation.set(0.85 + jog * 0.12, -0.25, -0.15);
     P.armR.rotation.z = -0.15;
-    P.armL.rotation.set(game.fx.dual > 0 ? (-0.85 - jog * 0.12) : (-jog * 0.55), game.fx.dual > 0 ? 0.25 : 0, 0.15);
+    P.armL.rotation.set(game.fx.dual > 0 ? (0.85 - jog * 0.12) : (jog * 0.55), game.fx.dual > 0 ? 0.25 : 0, 0.15);
   }
   trailR.update(realDt);
   trailL.update(realDt);
@@ -1277,6 +1291,7 @@ function startCountdown() {
   bigmsg.textContent = '３';
   bigmsg.classList.add('show');
   SFX.count(false);
+  if (game.introFace) { camPos.copy(CAM_INTRO.pos); camLook.copy(CAM_INTRO.look); }
 }
 function updateCountdown(dt) {
   game.countdownT += dt;
@@ -1290,6 +1305,7 @@ function updateCountdown(dt) {
       bigmsg.textContent = 'はじめ！';
       SFX.count(true); SFX.gong();
       game.state = 'play';
+      game.introFace = false;
       bgmStart(ROUND_TEMPO[game.round - 1]);
       setTimeout(() => bigmsg.classList.remove('show'), 700);
       if (game.round === 1) setTimeout(() => guideEl.classList.add('hide'), 4500);
@@ -1387,7 +1403,7 @@ function resetGame() {
   game.round = 1; game.time = 60; game.hp = 100; game.score = 0;
   game.combo = 0; game.maxCombo = 0; game.cuts = 0; game.comboTimer = 0;
   game.spawnTimer = 1.2; game.fx = { fast: 0, slow: 0, dual: 0, inv: 0 };
-  game.hurtCd = 0; game.effectTimer = 0; game.shake = 0;
+  game.hurtCd = 0; game.effectTimer = 0; game.shake = 0; game.introFace = true;
   ply.x = 0; ply.targetX = 0; ply.y = 0; ply.vy = 0; ply.onGround = true;
   ply.crouch = 0; ply.slash = null; ply.stagger = 0;
   P.katanaL.visible = false; P.aura.visible = false;
@@ -1475,7 +1491,7 @@ function loop(now) {
 
     // けしき
     const moved = wspd * dt;
-    groundTex.offset.y -= moved / GROUND_TILE;
+    groundTex.offset.y += moved / GROUND_TILE;
     spawnSceneryIfNeeded(moved);
     for (let i = scenery.length - 1; i >= 0; i--) {
       scenery[i].position.z += moved;
@@ -1503,9 +1519,9 @@ function loop(now) {
     jogT += realDt * 8;
     const jog = Math.sin(jogT);
     P.legR.rotation.x = jog * 0.7; P.legL.rotation.x = -jog * 0.7;
-    P.armR.rotation.set(-0.85 + jog * 0.12, -0.25, -0.15);
-    P.armL.rotation.set(-jog * 0.5, 0, 0.15);
-    groundTex.offset.y -= 10 * realDt / GROUND_TILE;
+    P.armR.rotation.set(0.85 + jog * 0.12, -0.25, -0.15);
+    P.armL.rotation.set(jog * 0.5, 0, 0.15);
+    groundTex.offset.y += 10 * realDt / GROUND_TILE;
     updatePetals(realDt, 10);
   }
 
