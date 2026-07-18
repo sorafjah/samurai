@@ -529,6 +529,10 @@ class Particles {
     this.pts.geometry.attributes.position.needsUpdate = true;
     this.pts.geometry.attributes.color.needsUpdate = true;
   }
+  hideAll() {
+    for (let i = 0; i < this.n; i++) { this.life[i] = 0; this.pos[i * 3 + 1] = -100; }
+    this.pts.geometry.attributes.position.needsUpdate = true;
+  }
 }
 const particles = new Particles(500);
 const confetti = new Particles(400);
@@ -920,7 +924,8 @@ function announce(text, color) {
   announceEl.classList.remove('pop'); void announceEl.offsetWidth;
   announceEl.classList.add('pop');
 }
-function showOuch() {
+function showOuch(text) {
+  ouchEl.textContent = text || 'イテッ！';
   ouchEl.classList.remove('pop'); void ouchEl.offsetWidth;
   ouchEl.classList.add('pop');
 }
@@ -1070,9 +1075,9 @@ function slashHitCheck() {
     if (p.z < -4.6 || p.z > 2.0) continue;
     let inRange = false;
     if (s.type === 'h') {
-      inRange = Math.abs(p.x - px) < (1.75 * wide + o.radius * 0.8) && Math.abs(p.y - (py + 1.55)) < (1.15 + o.radius * 0.8);
+      inRange = Math.abs(p.x - px) < (1.0 * wide + o.radius * 0.5) && Math.abs(p.y - (py + 1.55)) < (1.15 + o.radius * 0.7);
     } else {
-      inRange = Math.abs(p.x - px) < (1.05 * wide + o.radius * 0.8) && p.y > py + 0.35 && p.y < py + 3.2 + o.radius * 0.8;
+      inRange = Math.abs(p.x - px) < (0.68 * wide + o.radius * 0.5) && p.y > py + 0.35 && p.y < py + 3.2 + o.radius * 0.7;
     }
     if (!inRange) continue;
     o.hit = true;
@@ -1150,13 +1155,64 @@ function contactCheck(dt) {
   const botY = py + 0.35;
   for (let i = objects.length - 1; i >= 0; i--) {
     const o = objects[i];
-    if (o.type !== 'hard') continue;
+    if (o.type !== 'hard' && o.type !== 'item' && o.type !== 'enemy') continue;
     const p = o.group.position;
     if (Math.abs(p.z) > 0.7) continue;
     const rr = o.radius * 0.4;    // 当たり判定はきびしめ（見た目よりちいさい）
     if (Math.abs(p.x - px) > 0.5 + rr) continue;
     if (p.y + rr < botY || p.y - rr > topY) continue;
-    // ヒット！
+
+    if (o.type === 'item') {
+      // きらずにアイテムにぶつかった → ダメージ
+      if (game.fx.inv > 0) {
+        scene.remove(o.group);
+        objects.splice(i, 1);
+        particles.burst(p, 0xffffff, 10, 4, 0.3, 5);
+        continue;
+      }
+      if (game.hurtCd > 0) continue;
+      game.hurtCd = 0.7;
+      game.hp -= 10;
+      game.combo = 0; comboPop();
+      SFX.itte();
+      showOuch('ミス！');
+      flash(flashEl, 0.26);
+      game.shake = Math.max(game.shake, 0.6);
+      ply.stagger = 0.35;
+      scene.remove(o.group);
+      objects.splice(i, 1);
+      particles.burst(p, 0xffcf6a, 16, 4.5, 0.35, 7);
+      continue;
+    }
+
+    if (o.type === 'enemy') {
+      // きらずに敵にぶつかった → ダメージ
+      if (game.fx.inv > 0) {
+        SFX.crash();
+        particles.burst(p, 0xffe14d, 24, 7, 0.45, 8);
+        game.score += 30;
+        scorePopupAt(p, 'はねとばした！', '#ffe14d');
+        scene.remove(o.group);
+        objects.splice(i, 1);
+        game.shake = Math.max(game.shake, 0.4);
+        continue;
+      }
+      if (game.hurtCd > 0) continue;
+      game.hurtCd = 0.8;
+      game.hp -= 14;
+      game.combo = 0; comboPop();
+      SFX.itte();
+      showOuch('やられた！');
+      flash(flashEl, 0.34);
+      game.shake = Math.max(game.shake, 0.8);
+      ply.stagger = 0.42;
+      scene.remove(o.group);
+      objects.splice(i, 1);
+      particles.burst(p, 0xff8a5a, 18, 5.5, 0.4, 8);
+      continue;
+    }
+
+    // ヒット！（きれないもの）
     if (game.fx.inv > 0) {
       // むてき→はかい！
       SFX.crash();
@@ -1364,12 +1420,8 @@ function showAward() {
   awardTimer = 0;
 
   const score = Math.round(game.score);
-  let medal, rank;
-  if (score >= 15000) { medal = '🥇'; rank = 'きんメダル！すごい！'; }
-  else if (score >= 7000) { medal = '🥈'; rank = 'ぎんメダル！やったね！'; }
-  else { medal = '🥉'; rank = 'どうメダル！よくがんばった！'; }
-  $('medal').textContent = medal;
-  $('rankname').textContent = rank;
+  $('medal').textContent = '🎉';
+  $('rankname').textContent = '３ラウンド　クリア！おつかれさま！';
   $('stats').innerHTML =
     'スコア：<span class="v">' + score.toLocaleString() + '</span><br>' +
     'きったかず：<span class="v">' + game.cuts + '</span><br>' +
@@ -1400,6 +1452,9 @@ function updateAward(dt) {
 function resetGame() {
   clearFieldObjects();
   if (podium) { scene.remove(podium); podium = null; }
+  confetti.hideAll();
+  camIdx = 0;
+  $('cambtn').textContent = 'しせん：' + CAMS[0].name;
   game.round = 1; game.time = 60; game.hp = 100; game.score = 0;
   game.combo = 0; game.maxCombo = 0; game.cuts = 0; game.comboTimer = 0;
   game.spawnTimer = 1.2; game.fx = { fast: 0, slow: 0, dual: 0, inv: 0 };
