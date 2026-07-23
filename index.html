@@ -283,20 +283,8 @@ function updatePetals(dt, wspd) {
   petals.pts.geometry.attributes.position.needsUpdate = true;
 }
 
-/* とりい・とうろう（けしき） */
+/* とうろう（けしき） */
 const scenery = [];
-function makeTorii() {
-  const g = new THREE.Group();
-  const red = new THREE.MeshLambertMaterial({ color: 0xc23b22 });
-  const black = new THREE.MeshLambertMaterial({ color: 0x2b2b2b });
-  const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 7, 8), red); p1.position.set(-5.6, 3.5, 0);
-  const p2 = p1.clone(); p2.position.x = 5.6;
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(13.4, 0.7, 0.7), red); beam.position.y = 7.1;
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(14.4, 0.5, 1.0), black); cap.position.y = 7.7;
-  const mid = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.45, 0.5), red); mid.position.y = 5.7;
-  g.add(p1, p2, beam, cap, mid);
-  return g;
-}
 function makeLantern() {
   const g = new THREE.Group();
   const stone = new THREE.MeshLambertMaterial({ color: 0x9a9a90 });
@@ -314,13 +302,9 @@ function spawnSceneryIfNeeded(moved) {
   sceneryDist += moved;
   if (sceneryDist >= 26) {
     sceneryDist = 0;
-    if (Math.random() < 0.5) {
-      const t = makeTorii(); t.position.set(0, 0, -110); scene.add(t); scenery.push(t);
-    } else {
-      const s = Math.random() < 0.5 ? -1 : 1;
-      const l = makeLantern(); l.position.set(s * 6.4, 0, -110); scene.add(l); scenery.push(l);
-      const l2 = makeLantern(); l2.position.set(-s * 6.4, 0, -110 - 13); scene.add(l2); scenery.push(l2);
-    }
+    const s = Math.random() < 0.5 ? -1 : 1;
+    const l = makeLantern(); l.position.set(s * 6.4, 0, -110); scene.add(l); scenery.push(l);
+    const l2 = makeLantern(); l2.position.set(-s * 6.4, 0, -110 - 13); scene.add(l2); scenery.push(l2);
   }
 }
 
@@ -643,7 +627,10 @@ function bgmStart(tempo) { if (!actx) return; bgmTempo = tempo; bgmOn = true; bg
 function bgmStop() { bgmOn = false; }
 function bgmUpdate() {
   if (!actx || !bgmOn) return;
-  const stepDur = 60 / bgmTempo / 4;
+  let mult = 1;
+  if (game.fx.fast > 0) mult = 1.5;
+  else if (game.fx.slow > 0) mult = 0.62;
+  const stepDur = 60 / (bgmTempo * mult) / 4;
   while (bgmNext < actx.currentTime + 0.18) {
     const s = bgmStep % 32;
     const m = MEL[s];
@@ -684,6 +671,19 @@ function eyesFor(r, mat) {
   return g;
 }
 
+// アイテムとわかる「とっていい感じ」のグローリング＋台座
+function addPickupGlow(g, color, r) {
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r * 0.8, r * 1.05, 24),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  g.add(ring);
+  const glowBall = new THREE.Mesh(new THREE.SphereGeometry(r * 0.5, 10, 8),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  g.add(glowBall);
+  return ring;
+}
+
 const FACTORY = {
   ghost() {
     const r = 0.58;
@@ -719,25 +719,38 @@ const FACTORY = {
     const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.45),
       new THREE.MeshStandardMaterial({ color: 0xff4a3a, emissive: 0x991500, emissiveIntensity: 0.8, roughness: 0.3 }));
     g.add(m);
-    return { group: g, type: 'item', sub: 'fast', radius: 0.5, speedK: 1, score: 50, spin: true, name: 'スピードアップ！', color: '#ff8a6a' };
+    const ring = addPickupGlow(g, 0xff8a6a, 0.7);
+    return { group: g, type: 'item', sub: 'fast', radius: 0.5, speedK: 1, score: 50, spin: true, glow: ring, bob: true, name: 'スピードアップ！', color: '#ff8a6a' };
   },
   slow() {
     const g = new THREE.Group();
     const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45),
       new THREE.MeshStandardMaterial({ color: 0x6ac8ff, emissive: 0x0a4a99, emissiveIntensity: 0.8, roughness: 0.3 }));
     g.add(m);
-    return { group: g, type: 'item', sub: 'slow', radius: 0.5, speedK: 1, score: 50, spin: true, name: 'ゆっくり！', color: '#8ad4ff' };
+    const ring = addPickupGlow(g, 0x8ad4ff, 0.7);
+    return { group: g, type: 'item', sub: 'slow', radius: 0.5, speedK: 1, score: 50, spin: true, glow: ring, bob: true, name: 'ゆっくり！', color: '#8ad4ff' };
   },
   dual() {
+    // 二本の刀を交差させて「にとうりゅう」と一目でわかる形に
     const g = new THREE.Group();
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0xffd870, metalness: 0.9, roughness: 0.15, emissive: 0x775500, emissiveIntensity: 0.9 }));
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.32, 8),
-      new THREE.MeshStandardMaterial({ color: 0x5a3a1a }));
-    handle.position.y = -0.62;
-    g.add(blade, handle);
-    g.rotation.z = 0.7;
-    return { group: g, type: 'item', sub: 'dual', radius: 0.6, speedK: 1, score: 50, spin: true, name: 'にとうりゅう！', color: '#ffd870' };
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0xffd870, metalness: 0.9, roughness: 0.15, emissive: 0x775500, emissiveIntensity: 0.9 });
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.7 });
+    const guardMat = new THREE.MeshStandardMaterial({ color: 0xffe08a, metalness: 0.8, roughness: 0.25, emissive: 0x554400 });
+    function mkBlade(sign) {
+      const bg = new THREE.Group();
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.95, 0.04), bladeMat);
+      const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 10), guardMat);
+      guard.position.y = -0.5;
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.32, 8), handleMat);
+      handle.position.y = -0.66;
+      bg.add(blade, guard, handle);
+      bg.rotation.z = sign * 0.62;
+      bg.position.x = sign * 0.13;
+      return bg;
+    }
+    g.add(mkBlade(1), mkBlade(-1));
+    const ring = addPickupGlow(g, 0xffd870, 0.85);
+    return { group: g, type: 'item', sub: 'dual', radius: 0.65, speedK: 1, score: 50, spin: true, glow: ring, bob: true, name: 'にとうりゅう！', color: '#ffd870' };
   },
   inv() {
     const g = new THREE.Group();
@@ -745,7 +758,8 @@ const FACTORY = {
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.2 }));
     m.scale.set(0.7, 1.15, 0.7);
     g.add(m);
-    return { group: g, type: 'item', sub: 'inv', radius: 0.55, speedK: 1, score: 50, spin: true, rainbow: m, name: 'むてき！', color: '#fff' };
+    const ring = addPickupGlow(g, 0xffffff, 0.75);
+    return { group: g, type: 'item', sub: 'inv', radius: 0.55, speedK: 1, score: 50, spin: true, rainbow: m, glow: ring, bob: true, name: 'むてき！', color: '#fff' };
   },
   heal() {
     const g = new THREE.Group();
@@ -755,7 +769,8 @@ const FACTORY = {
     const c = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.42, 4), mat);
     c.rotation.z = Math.PI; c.rotation.y = Math.PI / 4; c.position.y = -0.13;
     g.add(s1, s2, c);
-    return { group: g, type: 'item', sub: 'heal', radius: 0.5, speedK: 1, score: 50, spin: true, name: 'かいふく！', color: '#7dff9e' };
+    const ring = addPickupGlow(g, 0x7dff9e, 0.65);
+    return { group: g, type: 'item', sub: 'heal', radius: 0.5, speedK: 1, score: 50, spin: true, glow: ring, bob: true, name: 'かいふく！', color: '#7dff9e' };
   },
   ironball() {
     const g = new THREE.Group();
@@ -797,6 +812,37 @@ const FACTORY = {
     }
     return { group: g, type: 'hard', sub: 'spike', radius: 0.7, speedK: 1.1, spin: true };
   },
+  hurdle() {
+    // ひくいバリケード：ジャンプしないとよけられない
+    const g = new THREE.Group();
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x9a7a45, roughness: 0.85 });
+    const bandMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
+    const span = ROAD_HALF * 2 + 1.6;
+    const railTop = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, span, 8), poleMat);
+    railTop.rotation.z = Math.PI / 2; railTop.position.y = 0.62;
+    const railBottom = railTop.clone(); railBottom.position.y = 0.2;
+    g.add(railTop, railBottom);
+    for (let x = -ROAD_HALF; x <= ROAD_HALF + 0.01; x += 1.6) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.78, 8), bandMat);
+      post.position.set(x, 0.4, 0);
+      g.add(post);
+    }
+    return { group: g, type: 'hard', sub: 'hurdle', radius: 1.15, speedK: 1, spin: false, wide: true, fixedY: 0.42 };
+  },
+  beam() {
+    // 頭上バー：しゃがまないとよけられない
+    const g = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x716c62, roughness: 0.9, flatShading: true });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x565149, roughness: 0.9 });
+    const span = ROAD_HALF * 2 + 1.6;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(span, 0.55, 0.55), stoneMat);
+    g.add(bar);
+    const postL = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.4, 8), postMat);
+    postL.position.set(-span / 2, -1.2, 0);
+    const postR = postL.clone(); postR.position.x = span / 2;
+    g.add(postL, postR);
+    return { group: g, type: 'hard', sub: 'beam', radius: 0.75, speedK: 1, spin: false, wide: true, fixedY: 1.75 };
+  },
 };
 
 function spawnObject() {
@@ -806,7 +852,7 @@ function spawnObject() {
   const itemP = 0.24;
   let obj;
   if (roll < hardP) {
-    const t = ['ironball', 'rock', 'anvil', 'spike'][Math.random() * 4 | 0];
+    const t = ['ironball', 'rock', 'anvil', 'spike', 'hurdle', 'beam'][Math.random() * 6 | 0];
     obj = FACTORY[t]();
   } else if (roll < hardP + itemP) {
     const x = Math.random();
@@ -816,6 +862,15 @@ function spawnObject() {
     const x = Math.random();
     const t = x < 0.55 ? 'ghost' : x < 0.85 ? 'oni' : 'big';
     obj = FACTORY[t]();
+  }
+  if (obj.wide) {
+    obj.baseY = obj.fixedY;
+    obj.phase = Math.random() * 6.28;
+    obj.hit = false;
+    obj.group.position.set(0, obj.baseY, -95);
+    scene.add(obj.group);
+    objects.push(obj);
+    return;
   }
   const heights = obj.type === 'hard' ? [1.0, 1.7, 2.7] : [1.3, 1.9, 2.5];
   obj.baseY = heights[Math.random() * heights.length | 0];
@@ -1075,9 +1130,9 @@ function slashHitCheck() {
     if (p.z < -4.6 || p.z > 2.0) continue;
     let inRange = false;
     if (s.type === 'h') {
-      inRange = Math.abs(p.x - px) < (1.0 * wide + o.radius * 0.5) && Math.abs(p.y - (py + 1.55)) < (1.15 + o.radius * 0.7);
+      inRange = (o.wide || Math.abs(p.x - px) < (1.0 * wide + o.radius * 0.5)) && Math.abs(p.y - (py + 1.55)) < (1.15 + o.radius * 0.7);
     } else {
-      inRange = Math.abs(p.x - px) < (0.68 * wide + o.radius * 0.5) && p.y > py + 0.35 && p.y < py + 3.2 + o.radius * 0.7;
+      inRange = (o.wide || Math.abs(p.x - px) < (0.68 * wide + o.radius * 0.5)) && p.y > py + 0.35 && p.y < py + 3.2 + o.radius * 0.7;
     }
     if (!inRange) continue;
     o.hit = true;
@@ -1159,7 +1214,7 @@ function contactCheck(dt) {
     const p = o.group.position;
     if (Math.abs(p.z) > 0.7) continue;
     const rr = o.radius * 0.4;    // 当たり判定はきびしめ（見た目よりちいさい）
-    if (Math.abs(p.x - px) > 0.5 + rr) continue;
+    if (!o.wide && Math.abs(p.x - px) > 0.5 + rr) continue;
     if (p.y + rr < botY || p.y - rr > topY) continue;
 
     if (o.type === 'item') {
@@ -1541,6 +1596,7 @@ function loop(now) {
       if (o.bob) o.group.position.y = o.baseY + Math.sin(now * 0.004 + o.phase) * 0.25;
       if (o.spin) { o.group.rotation.x += dt * 2; o.group.rotation.y += dt * 2.6; }
       if (o.rainbow) o.rainbow.material.emissive.setHSL((now * 0.0008 + o.phase) % 1, 1, 0.55);
+      if (o.glow) o.glow.material.opacity = 0.4 + 0.3 * Math.sin(now * 0.006 + o.phase * 3);
       if (o.group.position.z > 9) { scene.remove(o.group); objects.splice(i, 1); }
     }
 
